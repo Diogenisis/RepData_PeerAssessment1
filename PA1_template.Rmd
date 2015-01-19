@@ -1,0 +1,140 @@
+---
+title: "PA1_template"
+author: "Diogenisis"
+date: "January 17, 2015"
+output: html_document
+---
+
+### Analysis of activity data
+
+#### Introduction
+
+This assignment uses data collected from a personal activity monitoring device. This device collects data at 5 minute intervals through out the day. The data consists of two months of data from an anonymous individual collected during the months of October and November, 2012 and include the number of steps taken in 5 minute intervals each day.
+
+The data is from file 
+[activity.zip](https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip)
+    which was downloaded on 2015-01-17.
+    
+The variables included in this dataset are:  
+-- steps: Number of steps taking in a 5-minute interval (missing values are
+coded as NA)  
+-- date: The date on which the measurement was taken in YYYY-MM-DD
+format  
+-- interval: Identifier for the 5-minute interval in which measurement was taken
+
+The analysis is divided into the following steps:  
+1. Loading of libraries and data  
+2. Total number of steps per day  
+3. Daily activity patterns  
+4. Filling in missing values and repeating step 3  
+5. Weekday/weekend specific activity patterns  
+
+##### First we load the necessary libraries and the data
+
+*Note:* rmd template and data file need to be located in the same (working) directory.
+
+```{r}
+library(stringr)
+library(plyr)
+library(timeDate)
+library(lattice)
+x <- read.csv(unz("activity.zip","activity.csv"),stringsAsFactors = FALSE)
+summary(x)
+```
+
+##### Next we calculate the total number of steps per day:
+
+```{r}
+stepsPerDay <- ddply(x, .(date), summarize, totSteps = sum(steps))
+stepsPerDay$date <- strptime(stepsPerDay$date,"%Y-%m-%d")
+with (stepsPerDay, {
+        fromDate <- substr (min(date),1,10)
+        toDate <- substr (min(date),1,10)
+        hist(totSteps,
+             ylab = "Frequency", xlab = "Number of steps per day",
+             main = paste("Histogram of number of steps per day from\n", 
+                          fromDate," to ",toDate))    
+    }
+)
+
+```
+  
+For the number of steps per day we observe a **mean** value of 
+`r sprintf("%.2f",mean(stepsPerDay$totSteps,na.rm=TRUE))` and a **median** of `r median(stepsPerDay$totSteps,na.rm=TRUE)`.  
+  
+##### We then determine the average daily activity profile:
+
+```{r}
+x$interval <- str_pad(x$interval,4,pad="0")
+avgStepsPerInterval <- ddply(x, .(interval), summarize, totSteps = mean(steps,na.rm=TRUE))
+
+with (avgStepsPerInterval, {
+    plot(interval,totSteps, type = "l", xlab = "5 min interval",
+         ylab="Avg number of steps", 
+         main = paste("Average number of steps per interval"))
+    }   
+)
+
+```
+  
+The 5 minute interval with **highest number of average steps** is 
+`r avgStepsPerInterval[which(avgStepsPerInterval$totSteps == max(avgStepsPerInterval$totSteps) ),]$interval`.  
+
+
+##### Filling in missing values
+
+The original dataset contains `r sum(is.na(x$steps))` missing observations, i.e. time intervals without a report on the number of steps. 
+We create a copy of the original dataset where we replace all missing values by the overall average number of steps (`r sprintf("%.2f",mean(x$steps,na.rm=TRUE))`) taken during a 5 minute interval.
+```{r}
+y<-x
+y$steps[which(is.na(x$steps))] <- mean(x$steps,na.rm=TRUE)
+summary(y)
+```
+```{r, echo=FALSE}
+par(mfrow = c(2, 1))
+
+stepsPerDay <- ddply(x, .(date), summarize, totSteps = sum(steps))
+stepsPerDay$date <- strptime(stepsPerDay$date,"%Y-%m-%d")
+with (stepsPerDay, {
+    fromDate <- substr (min(date),1,10)
+    toDate <- substr (min(date),1,10)
+    hist(totSteps,
+         ylab = "Frequency", xlab = "Number of steps per day",
+         main = paste("Original number of steps per day from\n", 
+                      fromDate," to ",toDate))
+    
+}
+)
+
+stepsPerDayY <- ddply(y, .(date), summarize, totSteps = sum(steps))
+stepsPerDayY$date <- strptime(stepsPerDay$date,"%Y-%m-%d")
+with (stepsPerDayY, {
+    hist(totSteps,
+         ylab = "Frequency", xlab = "Number of steps per day",
+         main = paste("Number of steps per day\n", 
+                      "(missing values set to overall mean)"))
+    
+}
+)
+```
+  
+The figures above show that the overall shape of the histogram has not changed significantly.  
+Nor have mean and median of the steps taken per day:  
+Mean:   `r sprintf("%.2f",mean(stepsPerDayY$totSteps,na.rm=TRUE))` vs
+`r sprintf("%.2f",mean(stepsPerDay$totSteps,na.rm=TRUE))`  
+Median: `r sprintf("%.2f",median(stepsPerDayY$totSteps,na.rm=TRUE))` vs
+`r sprintf("%.2f",median(stepsPerDay$totSteps,na.rm=TRUE))`.  
+  
+##### Weekday/weekend specific activity patterns
+
+Finally we derive a modified dataset based on the dataset with missing observations filled in earlier. We add a factor indicating the type of day (weekday/weekend) for each observation and calculate the average steps per interval per type of day.
+
+```{r}
+y$date <- strptime(y$date,"%Y-%m-%d")
+z<-data.frame(y,day= ifelse(isWeekday(y$date,wday=1:5),"Weekday","Weekend"))
+z<-transform(z,interval=as.integer(interval))
+avgStepsPerInterval <- ddply(z, .(interval, day), summarize, totSteps = mean(steps,na.rm=TRUE))
+
+xyplot(totSteps ~ interval | day, data = avgStepsPerInterval, layout = c(1, 2), type = 'l', ylab = "Average steps per 5 min interval")
+```
+Comparing the two plots we note that the activity profile peaks later in the day on weekends and is more spread out than on weekdays.
